@@ -1,111 +1,85 @@
-package com.bajajhealth;
-
-/**
- * Hello world!
- *
- */
-import org.json.JSONObject;
-import org.json.JSONArray;
-
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Random;
-import java.util.Scanner;
 
 public class DestinationHashGenerator {
 
-	public static void main(String[] args) {
-		if (args.length != 2) {
-			System.out.println("Usage: java -jar DestinationHashGenerator.jar <PRN> <JSON File Path>");
-			return;
-		}
+    public static void main(String[] args) throws IOException, NoSuchAlgorithmException {
+        if (args.length < 2) {
+            System.out.println("Please provide the PRN number and JSON file path.");
+            return;
+        }
 
-		String prn = args[0].trim().toLowerCase();
-		String jsonFilePath = args[1];
+        String prnNumber = args[0].toLowerCase();
+        String jsonFilePath = args[1];
 
-		try {
-			// Read and parse the JSON file
-			File file = new File(jsonFilePath);
-			Scanner scanner = new Scanner(new FileReader(file));
-			StringBuilder jsonStr = new StringBuilder();
-			while (scanner.hasNext()) {
-				jsonStr.append(scanner.nextLine());
-			}
-			scanner.close();
+     
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode rootNode = mapper.readTree(new File(jsonFilePath));
 
-			JSONObject jsonObject = new JSONObject(jsonStr.toString());
+       
+        String destinationValue = findDestination(rootNode);
+        if (destinationValue == null) {
+            System.out.println("No 'destination' key found in the JSON file.");
+            return;
+        }
 
-			// Find the "destination" key
-			String destinationValue = findDestinationValue(jsonObject);
+       
+        String randomString = generateRandomString(8);
 
-			if (destinationValue == null) {
-				System.out.println("No 'destination' key found in the JSON file.");
-				return;
-			}
+      
+        String toHash = prnNumber + destinationValue + randomString;
 
-			// Generate a random 8-character alphanumeric string
-			String randomString = generateRandomString(8);
+      
+        String hash = generateMD5Hash(toHash);
 
-			// Generate the MD5 hash
-			String concatenatedValue = prn + destinationValue + randomString;
-			String md5Hash = generateMD5Hash(concatenatedValue);
+    
+        System.out.println(hash + ";" + randomString);
+    }
 
-			// Output the result in the required format
-			System.out.println(md5Hash + ";" + randomString);
+    private static String findDestination(JsonNode node) {
+        if (node.isObject()) {
+            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                if (field.getKey().equals("destination")) {
+                    return field.getValue().asText();
+                }
+                String result = findDestination(field.getValue());
+                if (result != null) return result;
+            }
+        } else if (node.isArray()) {
+            for (JsonNode arrayItem : node) {
+                String result = findDestination(arrayItem);
+                if (result != null) return result;
+            }
+        }
+        return null;
+    }
 
-		} catch (IOException e) {
-			System.out.println("Error reading the JSON file: " + e.getMessage());
-		} catch (NoSuchAlgorithmException e) {
-			System.out.println("Error generating MD5 hash: " + e.getMessage());
-		}
-	}
+    private static String generateRandomString(int length) {
+        String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        Random random = new Random();
+        StringBuilder sb = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            sb.append(characters.charAt(random.nextInt(characters.length())));
+        }
+        return sb.toString();
+    }
 
-	private static String findDestinationValue(JSONObject jsonObject) {
-		for (String key : jsonObject.keySet()) {
-			Object value = jsonObject.get(key);
-
-			if (key.equals("destination")) {
-				return value.toString();
-			}
-
-			if (value instanceof JSONObject) {
-				String result = findDestinationValue((JSONObject) value);
-				if (result != null)
-					return result;
-			} else if (value instanceof JSONArray) {
-				JSONArray jsonArray = (JSONArray) value;
-				for (int i = 0; i < jsonArray.length(); i++) {
-					if (jsonArray.get(i) instanceof JSONObject) {
-						String result = findDestinationValue(jsonArray.getJSONObject(i));
-						if (result != null)
-							return result;
-					}
-				}
-			}
-		}
-		return null;
-	}
-
-	private static String generateRandomString(int length) {
-		String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-		Random random = new Random();
-		StringBuilder sb = new StringBuilder(length);
-		for (int i = 0; i < length; i++) {
-			sb.append(characters.charAt(random.nextInt(characters.length())));
-		}
-		return sb.toString();
-	}
-
-	private static String generateMD5Hash(String input) throws NoSuchAlgorithmException {
-		MessageDigest md = MessageDigest.getInstance("MD5");
-		byte[] messageDigest = md.digest(input.getBytes());
-		StringBuilder sb = new StringBuilder();
-		for (byte b : messageDigest) {
-			sb.append(String.format("%02x", b));
-		}
-		return sb.toString();
-	}
+    private static String generateMD5Hash(String input) throws NoSuchAlgorithmException {
+        MessageDigest md = MessageDigest.getInstance("MD5");
+        byte[] messageDigest = md.digest(input.getBytes());
+        StringBuilder sb = new StringBuilder();
+        for (byte b : messageDigest) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
 }
